@@ -1,6 +1,5 @@
-﻿import { createRouter, createRoute, createRootRoute, Outlet, redirect } from '@tanstack/react-router';
+﻿import { createRouter, createRoute, createRootRoute, Outlet } from '@tanstack/react-router';
 import { AppShell } from './components/shell/AppShell';
-import { useAuthStore } from './stores/auth.store';
 import React from 'react';
 
 const LoginPage = React.lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
@@ -31,10 +30,6 @@ const loginRoute = createRoute({
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'app',
-  beforeLoad: () => {
-    const { isAuthenticated } = useAuthStore.getState();
-    if (!isAuthenticated) throw redirect({ to: '/login' });
-  },
   component: () => <AppShell><Suspense><Outlet /></Suspense></AppShell>,
 });
 
