@@ -1,0 +1,812 @@
+// XBuild ERP — Prisma Schema
+// Single-tenant per company. KHÔNG có workspace_id.
+// Mỗi customer = một deployment (DB + S3 + Redis độc lập).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema", "postgresqlExtensions", "fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgcrypto, citext, pg_trgm, btree_gin]
+  schemas    = ["public", "iam", "workflow", "audit", "data", "ai", "settings"]
+}
+
+// =====================================================================
+// PUBLIC schema — Company singleton
+// =====================================================================
+
+model Company {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  singleton             Boolean   @unique @default(true)
+  name                  String
+  emoji                 String?   @db.VarChar(10)
+  logoUrl               String?   @map("logo_url")
+  locale                String    @default("vi-VN") @db.VarChar(20)
+  timezone              String    @default("Asia/Ho_Chi_Minh") @db.VarChar(50)
+  ownerId               String    @map("owner_id") @db.Uuid
+  defaultInviteRoleSlug String?   @map("default_invite_role_slug") @db.VarChar(50)
+  sessionTimeoutMin     Int       @default(480) @map("session_timeout_min")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company")
+  @@schema("public")
+}
+
+// =====================================================================
+// IAM schema — Identity & Access Management
+// =====================================================================
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+  pending_invitation
+
+  @@schema("iam")
+}
+
+model User {
+  id                   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String     @unique @db.Citext
+  emailVerifiedAt      DateTime?  @map("email_verified_at") @db.Timestamptz(6)
+  fullName             String     @map("full_name") @db.VarChar(200)
+  displayName          String?    @map("display_name") @db.VarChar(100)
+  avatarUrl            String?    @map("avatar_url")
+  locale               String     @default("vi-VN") @db.VarChar(20)
+  timezone             String     @default("Asia/Ho_Chi_Minh") @db.VarChar(50)
+
+  passwordHash         String?    @map("password_hash")
+  mfaEnabled           Boolean    @default(false) @map("mfa_enabled")
+  mfaSecret            String?    @map("mfa_secret")
+  mfaBackupCodes       String[]   @map("mfa_backup_codes")
+
+  roleSlug             String?    @map("role_slug") @db.VarChar(50)
+  permissions          String[]
+
+  status               UserStatus @default(pending_invitation)
+  invitationToken      String?    @unique @map("invitation_token")
+  invitationExpiresAt  DateTime?  @map("invitation_expires_at") @db.Timestamptz(6)
+  invitedRoleSlug      String?    @map("invited_role_slug") @db.VarChar(50)
+  joinedAt             DateTime?  @map("joined_at") @db.Timestamptz(6)
+  lastActiveAt         DateTime?  @map("last_active_at") @db.Timestamptz(6)
+  createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  anonymizedAt         DateTime?  @map("anonymized_at") @db.Timestamptz(6)
+
+  teamMemberships      UserTeamMembership[]
+  sessions             UserSession[]
+  identities           UserIdentity[]
+
+  @@index([email])
+  @@index([status])
+  @@index([roleSlug])
+  @@map("users")
+  @@schema("iam")
+}
+
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?
+  permissions String[]
+  color       String?  @db.VarChar(20)
+  emoji       String?  @db.VarChar(10)
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("roles")
+  @@schema("iam")
+}
+
+model Team {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(200)
+  description String?
+  parentId    String?  @map("parent_id") @db.Uuid
+  emoji       String?  @db.VarChar(10)
+  color       String?  @db.VarChar(20)
+  depth       Int      @default(0)
+  path        String   @db.VarChar(1000)
+  createdBy   String   @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  parent      Team?    @relation("TeamHierarchy", fields: [parentId], references: [id])
+  children    Team[]   @relation("TeamHierarchy")
+  members     UserTeamMembership[]
+
+  @@index([parentId])
+  @@index([path(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("teams")
+  @@schema("iam")
+}
+
+model UserTeamMembership {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  teamId   String   @map("team_id") @db.Uuid
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@map("user_team_memberships")
+  @@schema("iam")
+}
+
+model UserSession {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  refreshToken String    @unique @map("refresh_token")
+  userAgent    String?   @map("user_agent")
+  ipAddress    String?   @map("ip_address") @db.VarChar(45)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+  @@schema("iam")
+}
+
+model UserIdentity {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  provider        String   @db.VarChar(50)
+  providerSubject String   @map("provider_subject") @db.VarChar(255)
+  email           String?  @db.Citext
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt      DateTime @default(now()) @map("last_used_at") @db.Timestamptz(6)
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+  @@map("user_identities")
+  @@schema("iam")
+}
+
+// =====================================================================
+// WORKFLOW schema
+// =====================================================================
+
+enum WorkflowStatus {
+  draft
+  published
+  archived
+
+  @@schema("workflow")
+}
+
+enum RunStatus {
+  created
+  running
+  waiting_task
+  waiting_approval
+  waiting_timer
+  waiting_parallel
+  waiting_sub_workflow
+  completed
+  failed
+  cancelled
+
+  @@schema("workflow")
+}
+
+enum NodeStatus {
+  pending
+  running
+  waiting
+  completed
+  skipped
+  failed
+
+  @@schema("workflow")
+}
+
+enum NodeType {
+  manual_trigger
+  record_trigger
+  user_task
+  approval_task
+  parallel_tasks
+  record_action
+  http_request
+  notification
+  ai_transformer
+  business_rule
+  if_else
+  timer_wait
+  reminder
+  sub_workflow
+  end
+
+  @@schema("workflow")
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+
+  @@schema("workflow")
+}
+
+enum ApprovalStatus {
+  pending
+  completed
+  cancelled
+  expired
+
+  @@schema("workflow")
+}
+
+enum TimerStatus {
+  pending
+  fired
+  cancelled
+  timeout
+
+  @@schema("workflow")
+}
+
+enum ParallelJoinStatus {
+  waiting
+  satisfied
+  timeout
+  failed
+
+  @@schema("workflow")
+}
+
+model WorkflowDefinition {
+  id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String                      @db.VarChar(200)
+  description    String?
+  status         WorkflowStatus              @default(draft)
+  currentVersion String?                     @map("current_version") @db.VarChar(50)
+  tags           String[]
+  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      String                      @map("created_by") @db.Uuid
+
+  versions       WorkflowDefinitionVersion[]
+  runs           WorkflowRun[]
+
+  @@index([status])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("workflow_definitions")
+  @@schema("workflow")
+}
+
+model WorkflowDefinitionVersion {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflowId     String             @map("workflow_id") @db.Uuid
+  version        String             @db.VarChar(50)
+  jsonDefinition Json               @map("json_definition")
+  publishedAt    DateTime?          @map("published_at") @db.Timestamptz(6)
+  publishedBy    String?            @map("published_by") @db.Uuid
+
+  workflow       WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, version])
+  @@index([jsonDefinition(ops: JsonbPathOps)], type: Gin)
+  @@map("workflow_definition_versions")
+  @@schema("workflow")
+}
+
+model WorkflowRun {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflowId      String             @map("workflow_id") @db.Uuid
+  workflowVersion String             @map("workflow_version") @db.VarChar(50)
+  status          RunStatus          @default(created)
+  currentNodeId   String?            @map("current_node_id")
+  parentRunId     String?            @map("parent_run_id") @db.Uuid
+  triggerType     String             @map("trigger_type") @db.VarChar(50)
+  triggeredBy     String             @map("triggered_by") @db.Uuid
+  triggeredAt     DateTime           @default(now()) @map("triggered_at") @db.Timestamptz(6)
+  context         Json               @default("{}")
+  variables       Json               @default("{}")
+  completedAt     DateTime?          @map("completed_at") @db.Timestamptz(6)
+  endStatus       String?            @map("end_status") @db.VarChar(50)
+  endReason       String?            @map("end_reason")
+
+  workflow        WorkflowDefinition @relation(fields: [workflowId], references: [id])
+  parentRun       WorkflowRun?       @relation("ParentChildRun", fields: [parentRunId], references: [id])
+  childRuns       WorkflowRun[]      @relation("ParentChildRun")
+  nodeExecutions  NodeExecution[]
+  taskItems       TaskItem[]
+  approvalItems   ApprovalItem[]
+  parallelGroups  ParallelGroup[]
+  timerJobs       TimerJob[]
+  reminders       ReminderSchedule[]
+  notifications   NotificationRecord[]
+
+  @@index([status, triggeredAt(sort: Desc)])
+  @@index([parentRunId])
+  @@index([workflowId, triggeredAt(sort: Desc)])
+  @@map("workflow_runs")
+  @@schema("workflow")
+}
+
+model NodeExecution {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId          String      @map("run_id") @db.Uuid
+  nodeId         String      @map("node_id")
+  nodeType       NodeType    @map("node_type")
+  status         NodeStatus
+  attempt        Int         @default(1)
+  startedAt      DateTime    @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime?   @map("completed_at") @db.Timestamptz(6)
+  output         Json?
+  error          Json?
+  idempotencyKey String      @map("idempotency_key")
+
+  run            WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, nodeId, attempt])
+  @@index([runId, startedAt])
+  @@map("node_executions")
+  @@schema("workflow")
+}
+
+model TaskItem {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId           String      @map("run_id") @db.Uuid
+  nodeId          String      @map("node_id")
+  title           String
+  description     String?
+  assigneeId      String      @map("assignee_id") @db.Uuid
+  status          TaskStatus  @default(pending)
+  priority        String?     @db.VarChar(20)
+  dueAt           DateTime?   @map("due_at") @db.Timestamptz(6)
+  slaBreachedAt   DateTime?   @map("sla_breached_at") @db.Timestamptz(6)
+  formSchema      Json?       @map("form_schema")
+  formValues      Json?       @map("form_values")
+  checklistResult Json?       @map("checklist_result")
+  comments        String?
+  attachments     Json        @default("[]")
+  completedBy     String?     @map("completed_by") @db.Uuid
+  completedAt     DateTime?   @map("completed_at") @db.Timestamptz(6)
+
+  run             WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([assigneeId, status, dueAt])
+  @@index([runId])
+  @@map("task_items")
+  @@schema("workflow")
+}
+
+model ApprovalItem {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId           String         @map("run_id") @db.Uuid
+  nodeId          String         @map("node_id")
+  requesterId     String         @map("requester_id") @db.Uuid
+  approverId      String         @map("approver_id") @db.Uuid
+  status          ApprovalStatus @default(pending)
+  decision        String?        @db.VarChar(50)
+  note            String?
+  decisionAt      DateTime?      @map("decision_at") @db.Timestamptz(6)
+  dueAt           DateTime?      @map("due_at") @db.Timestamptz(6)
+  slaBreached     Boolean        @default(false) @map("sla_breached")
+  approvalSubject Json?          @map("approval_subject")
+  approvalContext Json?          @map("approval_context")
+  reviewItems     Json           @default("[]") @map("review_items")
+  attachments     Json           @default("[]")
+  decisionPayload Json?          @map("decision_payload")
+  escalatedTo     String?        @map("escalated_to") @db.Uuid
+
+  run             WorkflowRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([approverId, status])
+  @@index([runId])
+  @@map("approval_items")
+  @@schema("workflow")
+}
+
+model ParallelGroup {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId         String             @map("run_id") @db.Uuid
+  nodeId        String             @map("node_id")
+  joinPolicy    String             @map("join_policy") @db.VarChar(50)
+  status        ParallelJoinStatus @default(waiting)
+  childTaskIds  String[]           @map("child_task_ids") @db.Uuid
+  sharedContext Json               @default("{}") @map("shared_context")
+  failurePolicy String?            @map("failure_policy")
+  startedAt     DateTime           @default(now()) @map("started_at") @db.Timestamptz(6)
+  satisfiedAt   DateTime?          @map("satisfied_at") @db.Timestamptz(6)
+
+  run           WorkflowRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@map("parallel_groups")
+  @@schema("workflow")
+}
+
+model TimerJob {
+  id          String      @id
+  runId       String      @map("run_id") @db.Uuid
+  nodeId      String      @map("node_id")
+  mode        String      @db.VarChar(30)
+  scheduledAt DateTime    @map("scheduled_at") @db.Timestamptz(6)
+  firedAt     DateTime?   @map("fired_at") @db.Timestamptz(6)
+  status      TimerStatus @default(pending)
+  payload     Json        @default("{}")
+  timezone    String?     @db.VarChar(50)
+
+  run         WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@index([runId])
+  @@map("timer_jobs")
+  @@schema("workflow")
+}
+
+model ReminderSchedule {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId            String      @map("run_id") @db.Uuid
+  nodeId           String      @map("node_id")
+  dueDateAt        DateTime    @map("due_date_at") @db.Timestamptz(6)
+  offsets          String[]
+  stopCondition    String?     @map("stop_condition")
+  stopMode         String?     @map("stop_mode") @db.VarChar(30)
+  reschedulePolicy String      @map("reschedule_policy") @db.VarChar(50)
+  timezone         String      @db.VarChar(50)
+  status           String      @default("active") @db.VarChar(30)
+  scheduledCount   Int         @default(0) @map("scheduled_count")
+  sentCount        Int         @default(0) @map("sent_count")
+  skippedCount     Int         @default(0) @map("skipped_count")
+  lastFiredAt      DateTime?   @map("last_fired_at") @db.Timestamptz(6)
+
+  run              WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([status, dueDateAt])
+  @@map("reminder_schedules")
+  @@schema("workflow")
+}
+
+model NotificationRecord {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId          String      @map("run_id") @db.Uuid
+  nodeId         String      @map("node_id")
+  recipients     Json
+  channels       String[]
+  subject        String?
+  bodyHash       String?     @map("body_hash")
+  templateId     String?     @map("template_id")
+  deliveryStatus Json        @default("{}") @map("delivery_status")
+  sentAt         DateTime    @default(now()) @map("sent_at") @db.Timestamptz(6)
+  deduped        Boolean     @default(false)
+
+  run            WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([sentAt])
+  @@map("notifications")
+  @@schema("workflow")
+}
+
+// =====================================================================
+// AUDIT schema — partitioned by month in production
+// =====================================================================
+
+model AuditEvent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId       String?   @map("run_id") @db.Uuid
+  nodeId      String?   @map("node_id")
+  nodeType    NodeType? @map("node_type")
+  event       String    @db.VarChar(100)
+  actor       Json
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  data        Json      @default("{}")
+  redactedKeys String[] @map("redacted_keys")
+
+  @@index([runId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@map("audit_events")
+  @@schema("audit")
+}
+
+// =====================================================================
+// DATA schema — Collections (dynamic business database)
+// =====================================================================
+
+enum FieldType {
+  text
+  textarea
+  richtext
+  number
+  currency
+  boolean
+  date
+  datetime
+  time
+  select
+  multiselect
+  email
+  url
+  phone
+  relation
+  file_ref
+  user_ref
+  json
+
+  @@schema("data")
+}
+
+model Collection {
+  id                       String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                     String               @db.VarChar(200)
+  slug                     String               @unique @db.VarChar(100)
+  emoji                    String?              @db.VarChar(10)
+  description              String?
+  schema                   Json                 @default("[]")
+  recordCount              Int                  @default(0) @map("record_count")
+  requireApprovalForWrite  Boolean              @default(false) @map("require_approval_for_write")
+  approvalWorkflowId       String?              @map("approval_workflow_id") @db.Uuid
+  appTemplateId            String?              @map("app_template_id") @db.Uuid
+  displayGroup             String?              @map("display_group") @db.VarChar(100)
+  createdBy                String               @map("created_by") @db.Uuid
+  createdAt                DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  records                  CollectionRecord[]
+  apiKeys                  CollectionApiKey[]
+  webhooks                 CollectionWebhook[]
+
+  @@index([slug])
+  @@index([appTemplateId])
+  @@map("collections")
+  @@schema("data")
+}
+
+model CollectionRecord {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  collectionId String     @map("collection_id") @db.Uuid
+  data         Json       @default("{}")
+  createdBy    String?    @map("created_by") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(6)
+
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId, createdAt(sort: Desc)])
+  @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@map("collection_records")
+  @@schema("data")
+}
+
+model CollectionApiKey {
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String                  @db.VarChar(100)
+  hashedKey         String                  @unique @map("hashed_key")
+  prefix            String                  @db.VarChar(20)
+  collectionId      String                  @map("collection_id") @db.Uuid
+  scopes            String[]
+  createdBy         String                  @map("created_by") @db.Uuid
+  lastUsedAt        DateTime?               @map("last_used_at") @db.Timestamptz(6)
+  expiresAt         DateTime?               @map("expires_at") @db.Timestamptz(6)
+  rateLimitOverride Int?                    @map("rate_limit_override")
+  revokedAt         DateTime?               @map("revoked_at") @db.Timestamptz(6)
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  collection        Collection              @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  auditLogs         CollectionApiAuditLog[]
+
+  @@map("collection_api_keys")
+  @@schema("data")
+}
+
+model CollectionWebhook {
+  id           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  collectionId String                      @map("collection_id") @db.Uuid
+  targetUrl    String                      @map("target_url")
+  secretHash   String?                     @map("secret_hash")
+  events       String[]
+  isActive     Boolean                     @default(true) @map("is_active")
+  createdBy    String                      @map("created_by") @db.Uuid
+  createdAt    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  collection   Collection                  @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  deliveries   CollectionWebhookDelivery[]
+
+  @@map("collection_webhooks")
+  @@schema("data")
+}
+
+model CollectionWebhookDelivery {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  webhookId    String            @map("webhook_id") @db.Uuid
+  event        String            @db.VarChar(100)
+  payload      Json
+  status       String            @db.VarChar(30)
+  attempts     Int               @default(0)
+  nextRetryAt  DateTime?         @map("next_retry_at") @db.Timestamptz(6)
+  responseCode Int?              @map("response_code")
+  responseBody String?           @map("response_body")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  webhook      CollectionWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, status])
+  @@map("collection_webhook_deliveries")
+  @@schema("data")
+}
+
+model CollectionApiAuditLog {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  keyId      String           @map("key_id") @db.Uuid
+  method     String           @db.VarChar(10)
+  path       String           @db.VarChar(500)
+  statusCode Int              @map("status_code")
+  latencyMs  Int              @map("latency_ms")
+  requestId  String           @map("request_id") @db.Uuid
+  actorIp    String?          @map("actor_ip") @db.VarChar(45)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  apiKey     CollectionApiKey @relation(fields: [keyId], references: [id], onDelete: Cascade)
+
+  @@index([keyId, createdAt(sort: Desc)])
+  @@map("collection_api_audit_logs")
+  @@schema("data")
+}
+
+// =====================================================================
+// AI schema — Virtual Agent memory
+// =====================================================================
+
+model AiConversation {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  title       String?     @db.VarChar(300)
+  intent      String?     @db.VarChar(50)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  messages    AiMessage[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("ai_conversations")
+  @@schema("ai")
+}
+
+model AiMessage {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String         @map("conversation_id") @db.Uuid
+  role           String         @db.VarChar(20)
+  content        String
+  toolCalls      Json?          @map("tool_calls")
+  previewPayload Json?          @map("preview_payload")
+  confirmed      Boolean?
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+  @@schema("ai")
+}
+
+// =====================================================================
+// SETTINGS schema — System configuration (WordPress wp_options pattern)
+// =====================================================================
+
+enum SettingValueType {
+  string
+  number
+  boolean
+  json
+  url
+  color
+  email
+  file
+  encrypted
+
+  @@schema("settings")
+}
+
+model AppSetting {
+  key         String           @id @db.VarChar(200)
+  value       Json
+  valueType   SettingValueType @map("value_type")
+  encrypted   Boolean          @default(false)
+  autoload    Boolean          @default(true)
+  category    String?          @db.VarChar(50)
+  addon       String?          @db.VarChar(100)
+  description String?
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy   String?          @map("updated_by") @db.Uuid
+
+  @@index([category])
+  @@index([addon])
+  @@index([autoload])
+  @@map("app_setting")
+  @@schema("settings")
+}
+
+// =====================================================================
+// FILE schema — File metadata
+// =====================================================================
+
+model FileRecord {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @db.VarChar(500)
+  originalName String   @map("original_name") @db.VarChar(500)
+  mimeType    String    @map("mime_type") @db.VarChar(200)
+  size        BigInt
+  s3Key       String    @map("s3_key") @db.VarChar(1000)
+  folderId    String?   @map("folder_id") @db.Uuid
+  uploadedBy  String    @map("uploaded_by") @db.Uuid
+  isPublic    Boolean   @default(false) @map("is_public")
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  folder      Folder?   @relation(fields: [folderId], references: [id])
+
+  @@index([folderId])
+  @@index([uploadedBy])
+  @@map("file_records")
+  @@schema("public")
+}
+
+model Folder {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @db.VarChar(300)
+  parentId    String?   @map("parent_id") @db.Uuid
+  depth       Int       @default(0)
+  path        String    @db.VarChar(2000)
+  createdBy   String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  parent      Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children    Folder[]  @relation("FolderHierarchy")
+  files       FileRecord[]
+
+  @@index([parentId])
+  @@map("folders")
+  @@schema("public")
+}
+
+// =====================================================================
+// APP TEMPLATES
+// =====================================================================
+
+model AppTemplate {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @db.VarChar(200)
+  slug        String    @unique @db.VarChar(100)
+  description String?
+  emoji       String?   @db.VarChar(10)
+  category    String?   @db.VarChar(100)
+  manifest    Json
+  version     String    @db.VarChar(50)
+  isInstalled Boolean   @default(false) @map("is_installed")
+  installedAt DateTime? @map("installed_at") @db.Timestamptz(6)
+  installedBy String?   @map("installed_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("app_templates")
+  @@schema("public")
+}
