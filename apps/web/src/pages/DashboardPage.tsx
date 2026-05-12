@@ -2,7 +2,7 @@
 import { Box, Grid, Card, CardContent, Typography, List, ListItem, ListItemText, ListItemIcon, Chip, Divider, Avatar, CircularProgress } from '@mui/material';
 import { AssignmentOutlined, ErrorOutline } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import api from '../api/client';
+import { dataClient as api } from '../api/data-client';
 
 function KpiCard({ title, value, color }: { title: string; value: string | number; color?: string }) {
   return (
@@ -111,3 +111,4 @@ export function DashboardPage() {
     </Box>
   );
 }
+

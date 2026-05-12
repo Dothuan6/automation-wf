@@ -3,7 +3,7 @@ import { Box, Typography, Grid, Card, CardContent, Chip, TextField, InputAdornme
 import { SearchOutlined, AccountTreeOutlined, EditOutlined } from '@mui/icons-material';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import api from '../api/client';
+import { dataClient as api } from '../api/data-client';
 
 type Workflow = { id: string; name: string; status: string; _count?: { runs: number }; updatedAt: string };
 type RunItem = { id: string; status: string; triggeredAt: string; workflow: { name: string } };
@@ -78,3 +78,4 @@ export function WorkflowsPage() {
     </Box>
   );
 }
+

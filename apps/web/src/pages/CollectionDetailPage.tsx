@@ -3,7 +3,7 @@ import { Box, Typography, TextField, InputAdornment, Stack, CircularProgress } f
 import { SearchOutlined } from '@mui/icons-material';
 import { useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import api from '../api/client';
+import { dataClient as api } from '../api/data-client';
 import { DataTable } from '../components/records/DataTable';
 
 type SchemaField = { id: string; name: string; type: string };
@@ -61,3 +61,4 @@ export function CollectionDetailPage() {
     </Box>
   );
 }
+

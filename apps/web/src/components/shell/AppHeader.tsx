@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   AppBar, Toolbar, Box, IconButton, Avatar, Tooltip,
   Badge, Typography, Popover, List, ListItem, ListItemText,
@@ -41,7 +41,6 @@ export function AppHeader({ onOpenCommandPalette }: AppHeaderProps) {
       sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', zIndex: 10 }}
     >
       <Toolbar sx={{ minHeight: '56px !important', px: 2, gap: 1 }}>
-        {/* Logo + Company */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
           <Box
             sx={{
@@ -56,7 +55,6 @@ export function AppHeader({ onOpenCommandPalette }: AppHeaderProps) {
           </Typography>
         </Box>
 
-        {/* Command palette trigger */}
         <Box
           onClick={onOpenCommandPalette}
           sx={{
@@ -77,7 +75,6 @@ export function AppHeader({ onOpenCommandPalette }: AppHeaderProps) {
 
         <Box sx={{ flex: 1 }} />
 
-        {/* Notification bell */}
         <Tooltip title="Thông báo">
           <IconButton size="small" onClick={(e) => setNotifAnchor(e.currentTarget)}>
             <Badge badgeContent={unreadCount} color="error" max={9}>
@@ -86,7 +83,6 @@ export function AppHeader({ onOpenCommandPalette }: AppHeaderProps) {
           </IconButton>
         </Tooltip>
 
-        {/* Avatar */}
         <Tooltip title={user?.fullName ?? user?.email ?? ''}>
           <IconButton size="small" onClick={(e) => setAvatarAnchor(e.currentTarget)} sx={{ ml: 0.5 }}>
             <Avatar
@@ -99,7 +95,6 @@ export function AppHeader({ onOpenCommandPalette }: AppHeaderProps) {
         </Tooltip>
       </Toolbar>
 
-      {/* Notification Popover */}
       <Popover
         open={Boolean(notifAnchor)}
         anchorEl={notifAnchor}
@@ -150,7 +145,6 @@ export function AppHeader({ onOpenCommandPalette }: AppHeaderProps) {
         </Box>
       </Popover>
 
-      {/* Avatar Menu */}
       <Popover
         open={Boolean(avatarAnchor)}
         anchorEl={avatarAnchor}

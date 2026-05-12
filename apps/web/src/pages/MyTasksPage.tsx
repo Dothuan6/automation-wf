@@ -2,7 +2,7 @@
 import { Box, Typography, Tabs, Tab, Card, List, ListItem, Chip, Button, Divider, Avatar, CircularProgress } from '@mui/material';
 import { AssignmentOutlined, ErrorOutline } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../api/client';
+import { dataClient as api } from '../api/data-client';
 
 type TaskItem = {
   id: string;
@@ -90,3 +90,4 @@ export function MyTasksPage() {
     </Box>
   );
 }
+

@@ -3,7 +3,7 @@ import { Box, Grid, Card, CardContent, Typography, Chip, Stepper, Step, StepLabe
 import { ExpandMoreOutlined } from '@mui/icons-material';
 import { useParams } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../api/client';
+import { dataClient as api } from '../api/data-client';
 
 type RunDetail = {
   id: string;
@@ -117,3 +117,4 @@ export function WorkflowRunDetailPage() {
     </Box>
   );
 }
+

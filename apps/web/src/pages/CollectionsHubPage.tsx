@@ -3,7 +3,7 @@ import { Box, Typography, Grid, Card, CardContent, CardActionArea, Button, TextF
 import { SearchOutlined, AddOutlined, StorageOutlined, FolderOutlined } from '@mui/icons-material';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import api from '../api/client';
+import { dataClient as api } from '../api/data-client';
 
 type Collection = {
   id: string;
@@ -92,3 +92,4 @@ export function CollectionsHubPage() {
     </Box>
   );
 }
+

@@ -31,21 +31,20 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const nav = (path: string) => { navigate({ to: path as any }); onClose(); };
+  const nav = (path: string) => {
+    navigate({ to: path as any });
+    onClose();
+  };
 
   const ALL_COMMANDS: CommandItem[] = [
-    // Quick Actions
-    { id: 'new-record', group: 'HÃ nh Ä‘á»™ng nhanh', label: 'Táº¡o báº£n ghi má»›i', icon: <AddOutlined fontSize="small" />, shortcut: 'N', action: () => nav('/collections') },
-    { id: 'new-workflow', group: 'HÃ nh Ä‘á»™ng nhanh', label: 'Táº¡o workflow má»›i', icon: <AccountTreeOutlined fontSize="small" />, shortcut: 'W', action: () => nav('/workflows') },
-    { id: 'my-tasks', group: 'HÃ nh Ä‘á»™ng nhanh', label: 'Viá»‡c cá»§a tÃ´i', icon: <AssignmentOutlined fontSize="small" />, action: () => nav('/my-tasks') },
-    { id: 'settings', group: 'HÃ nh Ä‘á»™ng nhanh', label: 'CÃ i Ä‘áº·t há»‡ thá»‘ng', icon: <SettingsOutlined fontSize="small" />, action: () => nav('/settings') },
-    // Workflow
-    { id: 'wf-list', group: 'Workflow', label: 'Danh sÃ¡ch workflow', icon: <AccountTreeOutlined fontSize="small" />, action: () => nav('/workflows') },
-    { id: 'wf-runs', group: 'Workflow', label: 'Lá»‹ch sá»­ cháº¡y workflow', icon: <PlayArrowOutlined fontSize="small" />, action: () => nav('/workflows/runs') },
-    // Records / Collections
-    { id: 'collections', group: 'Dá»¯ liá»‡u', label: 'Bá»™ sÆ°u táº­p dá»¯ liá»‡u', icon: <StorageOutlined fontSize="small" />, action: () => nav('/collections') },
-    // People
-    { id: 'people', group: 'NhÃ¢n sá»±', label: 'Quáº£n lÃ½ ngÆ°á»i dÃ¹ng', icon: <PersonOutlined fontSize="small" />, action: () => nav('/settings') },
+    { id: 'new-record', group: 'Hành động nhanh', label: 'Tạo bản ghi mới', icon: <AddOutlined fontSize="small" />, shortcut: 'N', action: () => nav('/collections') },
+    { id: 'new-workflow', group: 'Hành động nhanh', label: 'Tạo workflow mới', icon: <AccountTreeOutlined fontSize="small" />, shortcut: 'W', action: () => nav('/workflows') },
+    { id: 'my-tasks', group: 'Hành động nhanh', label: 'Việc của tôi', icon: <AssignmentOutlined fontSize="small" />, action: () => nav('/my-tasks') },
+    { id: 'settings', group: 'Hành động nhanh', label: 'Cài đặt hệ thống', icon: <SettingsOutlined fontSize="small" />, action: () => nav('/settings') },
+    { id: 'wf-list', group: 'Workflow', label: 'Danh sách workflow', icon: <AccountTreeOutlined fontSize="small" />, action: () => nav('/workflows') },
+    { id: 'wf-runs', group: 'Workflow', label: 'Lịch sử chạy workflow', icon: <PlayArrowOutlined fontSize="small" />, action: () => nav('/workflows/runs') },
+    { id: 'collections', group: 'Dữ liệu', label: 'Bộ sưu tập dữ liệu', icon: <StorageOutlined fontSize="small" />, action: () => nav('/collections') },
+    { id: 'people', group: 'Nhân sự', label: 'Quản lý người dùng', icon: <PersonOutlined fontSize="small" />, action: () => nav('/settings') },
   ];
 
   const filtered = query.trim()
@@ -69,9 +68,15 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   useEffect(() => setSelected(0), [query]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setSelected((s) => Math.min(s + 1, filtered.length - 1)); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); setSelected((s) => Math.max(s - 1, 0)); }
-    if (e.key === 'Enter') { filtered[selected]?.action(); }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelected((s) => Math.min(s + 1, filtered.length - 1));
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelected((s) => Math.max(s - 1, 0));
+    }
+    if (e.key === 'Enter') filtered[selected]?.action();
     if (e.key === 'Escape') onClose();
   };
 
@@ -84,20 +89,23 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       maxWidth={false}
       PaperProps={{
         sx: {
-          width: 640, maxHeight: '70vh', borderRadius: 3,
-          overflow: 'hidden', mt: '10vh', mx: 'auto',
+          width: 640,
+          maxHeight: '70vh',
+          borderRadius: 3,
+          overflow: 'hidden',
+          mt: '10vh',
+          mx: 'auto',
         },
       }}
       BackdropProps={{ sx: { backdropFilter: 'blur(2px)' } }}
     >
       <DialogContent sx={{ p: 0 }}>
-        {/* Search input */}
         <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
           <SearchOutlined sx={{ color: 'text.secondary', mr: 1.5 }} />
           <InputBase
             inputRef={inputRef}
             fullWidth
-            placeholder="TÃ¬m kiáº¿m hoáº·c gÃµ lá»‡nh..."
+            placeholder="Tìm kiếm hoặc gõ lệnh..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -106,10 +114,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           <Chip label="Esc" size="small" sx={{ height: 20, fontSize: 11, borderRadius: 1 }} onClick={onClose} />
         </Box>
 
-        {/* Results */}
         {filtered.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">KhÃ´ng tÃ¬m tháº¥y káº¿t quáº£ cho "{query}"</Typography>
+            <Typography variant="body2" color="text.secondary">Không tìm thấy kết quả cho "{query}"</Typography>
           </Box>
         ) : (
           <Box sx={{ overflowY: 'auto', maxHeight: 'calc(70vh - 70px)' }}>
@@ -134,8 +141,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                           selected={selected === idx}
                           onClick={item.action}
                           sx={{
-                            px: 2, py: 0.75, borderRadius: 1.5, mx: 1, my: 0.25,
-                            '&.Mui-selected': { bgcolor: 'primary.main', color: 'primary.contrastText', '& .MuiListItemIcon-root': { color: 'primary.contrastText' } },
+                            px: 2,
+                            py: 0.75,
+                            borderRadius: 1.5,
+                            mx: 1,
+                            my: 0.25,
+                            '&.Mui-selected': {
+                              bgcolor: 'primary.main',
+                              color: 'primary.contrastText',
+                              '& .MuiListItemIcon-root': { color: 'primary.contrastText' },
+                            },
                           }}
                         >
                           <ListItemIcon sx={{ minWidth: 32, color: 'text.secondary' }}>{item.icon}</ListItemIcon>
@@ -143,9 +158,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                             primary={<Typography variant="body2">{item.label}</Typography>}
                             secondary={item.description ? <Typography variant="caption">{item.description}</Typography> : undefined}
                           />
-                          {item.shortcut && (
-                            <Chip label={item.shortcut} size="small" sx={{ height: 18, fontSize: 11, borderRadius: 0.5 }} />
-                          )}
+                          {item.shortcut && <Chip label={item.shortcut} size="small" sx={{ height: 18, fontSize: 11, borderRadius: 0.5 }} />}
                         </ListItem>
                       );
                     })}
@@ -159,4 +172,3 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     </Dialog>
   );
 }
-
