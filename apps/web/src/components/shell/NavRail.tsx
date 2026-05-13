@@ -6,12 +6,13 @@ import {
 import {
   HomeOutlined, AssignmentOutlined, StorageOutlined, AccountTreeOutlined,
   FolderOutlined, BarChartOutlined, SettingsOutlined, HelpOutlineOutlined,
-  LightModeOutlined, DarkModeOutlined, MenuOpen, Menu,
+  LightModeOutlined, DarkModeOutlined, MenuOpen, Menu, SmartToyOutlined
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from '@tanstack/react-router';
 
 const NAV_ITEMS = [
   { label: 'Trang chủ', icon: <HomeOutlined />, path: '/' },
+  { label: 'Chat AI', icon: <SmartToyOutlined />, path: '/chat' },
   { label: 'Việc của tôi', icon: <AssignmentOutlined />, path: '/my-tasks' },
   { label: 'Dữ liệu', icon: <StorageOutlined />, path: '/collections' },
   { label: 'Workflow', icon: <AccountTreeOutlined />, path: '/workflows' },

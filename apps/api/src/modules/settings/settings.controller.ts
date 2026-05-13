@@ -25,6 +25,12 @@ export class SettingsController {
     return this.service.getByCategory(category);
   }
 
+  @Get('key/:key')
+  @RequirePermission('settings.read')
+  getByKey(@Param('key') key: string) {
+    return this.service.get(key);
+  }
+
   @Patch(':key')
   @RequirePermission('settings.manage')
   set(

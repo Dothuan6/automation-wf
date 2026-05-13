@@ -2,8 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 
-export type AgentIntent = 'workflow_launch' | 'qa' | 'draft' | 'analytics';
+export type AgentIntent = 'workflow_launch' | 'qa' | 'draft' | 'analytics' | 'workflow_generate';
 
 export interface ChatRequest {
   message: string;
@@ -24,14 +25,13 @@ export interface ChatResponse {
 @Injectable()
 export class VirtualAgentService {
   private readonly logger = new Logger(VirtualAgentService.name);
-  private readonly openai: OpenAI;
-
   private readonly systemPrompt = `
 You are XBuild Virtual Agent, an intelligent assistant embedded in an ERP system.
-You help users with: launching workflows, answering questions (qa), drafting documents (draft), and retrieving analytics (analytics).
+You help users with: launching workflows, answering questions (qa), drafting documents (draft), retrieving analytics (analytics), and generating new workflow processes (workflow_generate).
 
 When responding, ALWAYS begin your reply with one of these intent tags on its own line:
   [INTENT:workflow_launch]
+  [INTENT:workflow_generate]
   [INTENT:qa]
   [INTENT:draft]
   [INTENT:analytics]
@@ -42,17 +42,16 @@ Example:
 I will launch the "Purchase Order" workflow for you.
 <preview>{"workflowSlug":"purchase_order","inputs":{"amount":5000}}</preview>
 
+If the user wants to create or build a new workflow, use [INTENT:workflow_generate] and provide a JSON representation of the workflow containing 'name', 'description' and 'definition' (with nodes and edges) inside <preview>...</preview> tags.
+
 Otherwise just reply normally after the intent tag.
 `.trim();
 
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
-  ) {
-    this.openai = new OpenAI({
-      apiKey: this.config.get<string>('OPENAI_API_KEY', ''),
-    });
-  }
+    private readonly settings: SettingsService,
+  ) {}
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
     const { message, userId, conversationId } = req;
@@ -92,16 +91,26 @@ Otherwise just reply normally after the intent tag.
     history.push({ role: 'user', content: message });
 
     // ── 4. Call OpenAI ─────────────────────────────────────────────────────
+    const dbApiKey = await this.settings.get<string>('ai_api_key');
+    const dbModel = await this.settings.get<string>('ai_model');
+    const dbEndpoint = await this.settings.get<string>('ai_api_endpoint');
+
+    const apiKey = dbApiKey || this.config.get<string>('OPENAI_API_KEY', '');
+    const model = dbModel || this.config.get<string>('OPENAI_MODEL', 'gpt-4o-mini');
+    const baseURL = dbEndpoint || undefined;
+
+    const openai = new OpenAI({ apiKey, baseURL });
+
     let rawReply = '';
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: this.config.get<string>('OPENAI_MODEL', 'gpt-4o-mini'),
+      const completion = await openai.chat.completions.create({
+        model,
         messages: [
           { role: 'system', content: this.systemPrompt },
           ...history,
         ],
         temperature: 0.4,
-        max_tokens: 1024,
+        max_tokens: 2048,
       });
       rawReply = completion.choices[0]?.message?.content ?? '';
     } catch (err) {
@@ -166,6 +175,31 @@ Otherwise just reply normally after the intent tag.
       data: { confirmed },
     });
 
+    if (confirmed && msg.conversation.intent === 'workflow_generate' && msg.previewPayload) {
+      const payload = msg.previewPayload as any;
+      const wfDef = payload.definition || {};
+      
+      const newWf = await this.prisma.workflowDefinition.create({
+        data: {
+          name: payload.name || 'AI Generated Workflow',
+          description: payload.description || 'Workflow created by AI Assistant',
+          status: 'draft',
+          createdBy: userId,
+          versions: {
+            create: {
+              version: '1.0.0',
+              jsonDefinition: wfDef,
+            }
+          }
+        }
+      });
+      
+      await this.prisma.workflowDefinition.update({
+        where: { id: newWf.id },
+        data: { currentVersion: '1.0.0' }
+      });
+    }
+
     return { success: true, confirmed };
   }
 
@@ -198,7 +232,7 @@ Otherwise just reply normally after the intent tag.
   private parseIntent(raw: string): AgentIntent {
     const match = raw.match(/\[INTENT:(\w+)\]/);
     const tag = match?.[1] ?? '';
-    const valid: AgentIntent[] = ['workflow_launch', 'qa', 'draft', 'analytics'];
+    const valid: AgentIntent[] = ['workflow_launch', 'qa', 'draft', 'analytics', 'workflow_generate'];
     return valid.includes(tag as AgentIntent) ? (tag as AgentIntent) : 'qa';
   }
 

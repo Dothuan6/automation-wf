@@ -1,4 +1,4 @@
-﻿import { createRouter, createRoute, createRootRoute, Outlet } from '@tanstack/react-router';
+import { createRouter, createRoute, createRootRoute, Outlet } from '@tanstack/react-router';
 import { AppShell } from './components/shell/AppShell';
 import React from 'react';
 
@@ -14,6 +14,7 @@ const FilesPage = React.lazy(() => import('./pages/FilesPage').then((m) => ({ de
 const ReportsPage = React.lazy(() => import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const HelpPage = React.lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })));
+const ChatPage = React.lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })));
 
 function Suspense({ children }: { children: React.ReactNode }) {
   return <React.Suspense fallback={<div style={{ padding: 32, color: '#5F6368' }}>Dang tai...</div>}>{children}</React.Suspense>;
@@ -34,6 +35,7 @@ const appRoute = createRoute({
 });
 
 const indexRoute = createRoute({ getParentRoute: () => appRoute, path: '/', component: DashboardPage });
+const chatRoute = createRoute({ getParentRoute: () => appRoute, path: '/chat', component: ChatPage });
 const myTasksRoute = createRoute({ getParentRoute: () => appRoute, path: '/my-tasks', component: MyTasksPage });
 const collectionsRoute = createRoute({ getParentRoute: () => appRoute, path: '/collections', component: CollectionsHubPage });
 const collectionDetailRoute = createRoute({ getParentRoute: () => appRoute, path: '/collections/$collectionId', component: CollectionDetailPage });
@@ -49,7 +51,7 @@ const helpRoute = createRoute({ getParentRoute: () => appRoute, path: '/help', c
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
-    indexRoute, myTasksRoute,
+    indexRoute, chatRoute, myTasksRoute,
     collectionsRoute, collectionDetailRoute,
     workflowsRoute, workflowRunsRoute, workflowEditorRoute, workflowRunDetailRoute,
     filesRoute, reportsRoute, settingsRoute, helpRoute,

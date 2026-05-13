@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Tabs, Tab, Card, CardContent, TextField,
   Button, Switch, FormControlLabel, Divider, List, ListItem,
   ListItemText, ListItemSecondaryAction, Chip, Avatar, IconButton, Tooltip,
+  Snackbar, Alert
 } from '@mui/material';
 import { AddOutlined, EditOutlined, DeleteOutlined } from '@mui/icons-material';
+import apiClient from '../api/client';
 
 const MOCK_USERS = [
   { id: '1', name: 'Nguyễn Văn Admin', email: 'admin@company.vn', role: 'admin', status: 'active' },
@@ -22,6 +24,52 @@ function roleColor(r: string) {
 
 export function SettingsPage() {
   const [tab, setTab] = useState(0);
+
+  // AI Config state
+  const [aiEndpoint, setAiEndpoint] = useState('https://api.openai.com/v1');
+  const [aiKey, setAiKey] = useState('');
+  const [aiModel, setAiModel] = useState('gpt-4o');
+  const [aiEnabled, setAiEnabled] = useState(true);
+  
+  const [toast, setToast] = useState<{msg: string, type: 'success'|'error'} | null>(null);
+
+  useEffect(() => {
+    if (tab === 2) {
+      loadAiSettings();
+    }
+  }, [tab]);
+
+  const loadAiSettings = async () => {
+    try {
+      const [ep, key, mod, en] = await Promise.all([
+        apiClient.get('/settings/key/ai_api_endpoint').then(res => res.data),
+        apiClient.get('/settings/key/ai_api_key').then(res => res.data),
+        apiClient.get('/settings/key/ai_model').then(res => res.data),
+        apiClient.get('/settings/key/ai_enabled').then(res => res.data)
+      ]);
+      if (ep) setAiEndpoint(ep);
+      if (key) setAiKey(key);
+      if (mod) setAiModel(mod);
+      if (en !== null && en !== undefined) setAiEnabled(en === 'true' || en === true);
+    } catch (err) {
+      console.error('Failed to load AI settings', err);
+    }
+  };
+
+  const saveAiSettings = async () => {
+    try {
+      await Promise.all([
+        apiClient.patch('/settings/ai_api_endpoint', { value: aiEndpoint }),
+        apiClient.patch('/settings/ai_api_key', { value: aiKey }),
+        apiClient.patch('/settings/ai_model', { value: aiModel }),
+        apiClient.patch('/settings/ai_enabled', { value: String(aiEnabled) }),
+      ]);
+      setToast({ msg: 'Lưu cấu hình thành công', type: 'success' });
+    } catch (err) {
+      console.error(err);
+      setToast({ msg: 'Lỗi khi lưu cấu hình', type: 'error' });
+    }
+  };
 
   return (
     <Box>
@@ -88,11 +136,11 @@ export function SettingsPage() {
           <CardContent sx={{ p: 3 }}>
             <Typography variant="h3" sx={{ mb: 2 }}>Cấu hình AI</Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField label="API Endpoint" size="small" fullWidth defaultValue="https://api.openai.com/v1" />
-              <TextField label="API Key" size="small" fullWidth type="password" />
-              <TextField label="Model" size="small" fullWidth defaultValue="gpt-4o" />
-              <FormControlLabel control={<Switch defaultChecked />} label="Bật AI Assistant" />
-              <Button variant="contained" sx={{ alignSelf: 'flex-start' }}>Lưu cấu hình</Button>
+              <TextField label="API Endpoint" size="small" fullWidth value={aiEndpoint} onChange={(e) => setAiEndpoint(e.target.value)} />
+              <TextField label="API Key" size="small" fullWidth type="password" value={aiKey} onChange={(e) => setAiKey(e.target.value)} placeholder="Nhập API Key để cập nhật" />
+              <TextField label="Model" size="small" fullWidth value={aiModel} onChange={(e) => setAiModel(e.target.value)} />
+              <FormControlLabel control={<Switch checked={aiEnabled} onChange={(e) => setAiEnabled(e.target.checked)} />} label="Bật AI Assistant" />
+              <Button variant="contained" sx={{ alignSelf: 'flex-start' }} onClick={saveAiSettings}>Lưu cấu hình</Button>
             </Box>
           </CardContent>
         </Card>
@@ -111,6 +159,10 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       )}
+      
+      <Snackbar open={!!toast} autoHideDuration={3000} onClose={() => setToast(null)}>
+        <Alert severity={toast?.type || 'info'} onClose={() => setToast(null)}>{toast?.msg}</Alert>
+      </Snackbar>
     </Box>
   );
 }
